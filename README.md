@@ -10,7 +10,8 @@ pixel maker
 生图的时候要加上一句话(白色背景,游戏素材细的黑色外轮廓)
 
 举例:
-游戏素材,中国元素,室内,2.5d等距,tilemap瓦片,家具组件,白色背景,游戏素材细的黑色外轮廓
+游戏素材,中国元素,室内,2.5d等距,tilemap瓦片,家具组件,
+白色背景,游戏素材细的黑色外轮廓
 
 开发者:兔师兄369
 
@@ -18,5 +19,3 @@ pixel maker
 ![图1](https://github.com/hello432369/pixelmakererererrr/blob/main/ScreenShot_2026-04-26_144623_574.png?raw=true)
 
 ![图2](https://github.com/hello432369/pixelmakererererrr/blob/main/ScreenShot_2026-04-26_144641_196.png?raw=true)
-
-玄道子 贡献3元,感谢老铁支持
