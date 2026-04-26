@@ -1,0 +1,2020 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>游戏素材拆分与合并工具</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+  :root {
+    --bg: #1a1a2e; --bg2: #16213e; --bg3: #0f3460;
+    --accent: #e94560; --accent2: #533483; --text: #eee; --text2: #aaa;
+    --border: #333; --success: #00c853; --warn: #ffab00;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); min-height:100vh; }
+
+  .header { display:flex; align-items:center; justify-content:space-between; padding:12px 24px; background: var(--bg2); border-bottom:1px solid var(--border); }
+  .header h1 { font-size:20px; background: linear-gradient(135deg, var(--accent), #ff6b9d); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+  .mode-tabs { display:flex; gap:4px; background: var(--bg); border-radius:8px; padding:3px; }
+  .mode-tab { padding:8px 20px; border:none; border-radius:6px; cursor:pointer; background:transparent; color:var(--text2); font-size:14px; font-weight:500; transition:.2s; }
+  .mode-tab.active { background: var(--accent); color:#fff; }
+  .mode-tab:hover:not(.active) { background: rgba(255,255,255,.08); }
+
+  .app { display:flex; height: calc(100vh - 57px); }
+  .sidebar { width:300px; min-width:300px; background: var(--bg2); border-right:1px solid var(--border); overflow-y:auto; padding:16px; }
+  .main { flex:1; display:flex; align-items:center; justify-content:center; overflow:auto; position:relative; background: repeating-conic-gradient(rgba(255,255,255,.03) 0% 25%, transparent 0% 50%) 0 0 / 20px 20px; }
+  .panel { display:none; }
+  .panel.active { display:block; }
+
+  .section { margin-bottom:16px; }
+  .section-title { font-size:12px; text-transform:uppercase; letter-spacing:1px; color:var(--text2); margin-bottom:8px; display:flex; align-items:center; gap:6px; }
+  .section-title::before { content:''; width:3px; height:12px; background:var(--accent); border-radius:2px; }
+
+  .btn { display:inline-flex; align-items:center; justify-content:center; gap:6px; padding:8px 16px; border:none; border-radius:6px; cursor:pointer; font-size:13px; font-weight:500; transition:.2s; width:100%; }
+  .btn-primary { background: var(--accent); color:#fff; }
+  .btn-primary:hover { background: #d63851; transform:translateY(-1px); }
+  .btn-secondary { background: rgba(255,255,255,.08); color:var(--text); border:1px solid var(--border); }
+  .btn-secondary:hover { background: rgba(255,255,255,.12); }
+  .btn-success { background: var(--success); color:#fff; }
+  .btn-success:hover { background: #00a844; }
+  .btn-sm { padding:5px 10px; font-size:12px; width:auto; }
+  .btn-group { display:flex; gap:6px; }
+  .btn-group .btn { flex:1; }
+
+  .input-group { margin-bottom:10px; }
+  .input-group label { display:block; font-size:12px; color:var(--text2); margin-bottom:4px; }
+  input[type="range"] { width:100%; accent-color: var(--accent); }
+  input[type="number"], input[type="text"] { width:100%; padding:6px 10px; background:var(--bg); border:1px solid var(--border); border-radius:4px; color:var(--text); font-size:13px; }
+  .range-row { display:flex; align-items:center; gap:8px; }
+  .range-row input[type="range"] { flex:1; }
+  .range-val { min-width:36px; text-align:center; font-size:12px; color:var(--accent); font-weight:600; }
+
+  .upload-zone { border:2px dashed var(--border); border-radius:10px; padding:30px 20px; text-align:center; cursor:pointer; transition:.2s; margin-bottom:12px; }
+  .upload-zone:hover, .upload-zone.dragover { border-color: var(--accent); background: rgba(233,69,96,.05); }
+  .upload-zone .icon { font-size:36px; margin-bottom:8px; }
+  .upload-zone p { font-size:13px; color:var(--text2); }
+  .upload-zone input { display:none; }
+
+  .canvas-wrapper { position:relative; display:inline-block; }
+  .canvas-wrapper canvas { display:block; }
+  #overlayCanvas { position:absolute; top:0; left:0; cursor:crosshair; }
+
+  .info-bar { position:absolute; bottom:12px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,.7); backdrop-filter:blur(8px); padding:6px 16px; border-radius:20px; font-size:12px; color:var(--text2); display:flex; gap:16px; z-index:10; }
+  .info-bar span { display:flex; align-items:center; gap:4px; }
+  .info-bar .val { color:var(--accent); font-weight:600; }
+
+  .merge-grid { display:grid; gap:4px; padding:8px; }
+  .merge-item { position:relative; border-radius:6px; overflow:hidden; background:var(--bg); }
+  .merge-item img { display:block; width:100%; height:100%; object-fit:contain; }
+  .merge-item .idx { position:absolute; top:2px; left:2px; background:rgba(0,0,0,.6); color:#fff; font-size:10px; padding:1px 5px; border-radius:3px; }
+  .merge-item .del-btn { position:absolute; top:2px; right:2px; width:18px; height:18px; background:var(--accent); color:#fff; border:none; border-radius:50%; font-size:11px; cursor:pointer; display:none; align-items:center; justify-content:center; }
+  .merge-item:hover .del-btn { display:flex; }
+
+  .checkbox-row { display:flex; align-items:center; gap:8px; font-size:13px; cursor:pointer; margin-bottom:8px; }
+  .checkbox-row input { accent-color: var(--accent); }
+
+  .toast { position:fixed; top:20px; right:20px; background:var(--bg3); color:#fff; padding:10px 20px; border-radius:8px; font-size:13px; z-index:999; transform:translateX(120%); transition:.3s; border-left:3px solid var(--success); }
+  .toast.show { transform:translateX(0); }
+  .toast.error { border-left-color: var(--accent); }
+
+  ::-webkit-scrollbar { width:6px; }
+  ::-webkit-scrollbar-track { background:transparent; }
+  ::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
+
+  .empty-state { text-align:center; color:var(--text2); }
+  .empty-state .icon { font-size:48px; margin-bottom:12px; opacity:.5; }
+  .empty-state p { font-size:14px; }
+
+  .color-pick-row { display:flex; align-items:center; gap:8px; }
+  .color-pick-row input[type="color"] { width:32px; height:28px; border:none; border-radius:4px; cursor:pointer; background:transparent; }
+
+  /* Split mode sub-tabs */
+  .split-mode-tabs { display:flex; gap:3px; background:var(--bg); border-radius:6px; padding:2px; margin-bottom:10px; }
+  .split-mode-tab { flex:1; padding:6px 8px; border:none; border-radius:4px; cursor:pointer; background:transparent; color:var(--text2); font-size:12px; font-weight:500; transition:.2s; text-align:center; }
+  .split-mode-tab.active { background:var(--accent); color:#fff; }
+  .split-mode-tab:hover:not(.active) { background:rgba(255,255,255,.06); }
+
+  .sub-panel { display:none; }
+  .sub-panel.active { display:block; }
+
+  /* Region list */
+  .region-list { max-height:200px; overflow-y:auto; }
+  .region-item { display:flex; align-items:center; gap:6px; padding:5px 6px; border-radius:4px; font-size:12px; cursor:pointer; transition:.15s; border-left:3px solid transparent; }
+  .region-item:hover { background:rgba(255,255,255,.06); }
+  .region-item.selected { background:rgba(233,69,96,.15); border-left-color:var(--accent); }
+  .region-item.inner-checked { background:rgba(0,200,83,.12); border-left-color:var(--success); }
+  .region-item.inner-checked .info { color:var(--success); font-weight:600; }
+  .region-item .color-dot { width:12px; height:12px; border-radius:3px; flex-shrink:0; }
+  .region-item .info { flex:1; color:var(--text2); }
+  .region-item .del { width:18px; height:18px; background:transparent; border:none; color:var(--text2); cursor:pointer; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:14px; }
+  .region-item .del:hover { background:var(--accent); color:#fff; }
+  .region-item .inner-cb { width:18px; height:18px; accent-color: var(--success); cursor:pointer; flex-shrink:0; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>🎮 游戏素材拆分与合并工具</h1>
+  <div class="mode-tabs">
+    <button class="mode-tab active" onclick="switchMode('split')">✂️ 拆分</button>
+    <button class="mode-tab" onclick="switchMode('merge')">🔗 合并</button>
+  </div>
+</div>
+
+<div class="app">
+  <div class="sidebar">
+
+    <!-- ===== SPLIT PANEL ===== -->
+    <div class="panel active" id="splitPanel">
+      <div class="section">
+        <div class="section-title">上传图片</div>
+        <div class="upload-zone" id="splitUpload" onclick="document.getElementById('splitFile').click()">
+          <div class="icon">📁</div>
+          <p>点击或拖拽上传素材图</p>
+          <p style="font-size:11px;margin-top:4px">支持 PNG / JPG / WebP</p>
+          <input type="file" id="splitFile" accept="image/*">
+        </div>
+      </div>
+
+      <!-- Split mode sub-tabs -->
+      <div class="split-mode-tabs">
+        <button class="split-mode-tab" onclick="switchSplitMode('rect')">▭ 矩形</button>
+        <button class="split-mode-tab active" onclick="switchSplitMode('irregular')">✦ 异形</button>
+      </div>
+
+      <!-- ===== RECT MODE ===== -->
+      <div class="sub-panel" id="rectPanel">
+        <div class="section">
+          <div class="section-title">背景移除</div>
+          <label class="checkbox-row">
+            <input type="checkbox" id="bgRemoveToggle" onchange="toggleBgRemove()">
+            启用背景移除
+          </label>
+          <div id="bgRemoveOptions" style="display:none">
+            <div class="input-group">
+              <label>容差</label>
+              <div class="range-row">
+                <input type="range" id="bgTolerance" min="1" max="100" value="30" oninput="document.getElementById('bgTolVal').textContent=this.value">
+                <span class="range-val" id="bgTolVal">30</span>
+              </div>
+            </div>
+            <div class="input-group">
+              <label>取色点</label>
+              <div class="color-pick-row">
+                <input type="color" id="bgColor" value="#ffffff">
+                <span id="bgColorHex" style="font-size:12px;color:var(--text2)">#FFFFFF</span>
+                <button class="btn-sm btn-secondary" onclick="enableBgPickMode()" style="margin-left:auto">🧪 取色</button>
+              </div>
+            </div>
+            <button class="btn btn-primary" onclick="applyBgRemove()" style="margin-top:6px">✨ 应用背景移除</button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">自动网格</div>
+          <div class="input-group">
+            <label>列数</label>
+            <div class="range-row">
+              <input type="range" id="gridCols" min="1" max="20" value="4" oninput="document.getElementById('gridColsVal').textContent=this.value">
+              <span class="range-val" id="gridColsVal">4</span>
+            </div>
+          </div>
+          <div class="input-group">
+            <label>行数</label>
+            <div class="range-row">
+              <input type="range" id="gridRows" min="1" max="20" value="4" oninput="document.getElementById('gridRowsVal').textContent=this.value">
+              <span class="range-val" id="gridRowsVal">4</span>
+            </div>
+          </div>
+          <button class="btn btn-secondary" onclick="autoGrid()">📐 生成网格选框</button>
+        </div>
+
+        <div class="section">
+          <div class="section-title">手动选框</div>
+          <p style="font-size:12px;color:var(--text2);margin-bottom:8px">在图片上拖拽绘制矩形选框</p>
+          <div class="btn-group">
+            <button class="btn btn-secondary btn-sm" onclick="clearAllBoxes()">🗑️ 清空</button>
+            <button class="btn btn-secondary btn-sm" onclick="undoLastBox()">↩️ 撤销</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== IRREGULAR MODE ===== -->
+      <div class="sub-panel active" id="irregularPanel">
+        <div class="section">
+          <div class="section-title">颜色标注（点击图片取色）</div>
+          <p style="font-size:12px;color:var(--text2);margin-bottom:8px">先标注背景色和轮廓色，再检测</p>
+          <div class="input-group">
+            <label>背景色</label>
+            <div class="color-pick-row">
+              <input type="color" id="irBgColor" value="#ffffff">
+              <span id="irBgColorHex" style="font-size:12px;color:var(--text2)">未取色</span>
+              <button class="btn-sm btn-secondary" onclick="enableIrColorPick('bg')" style="margin-left:auto">🧪 取色</button>
+            </div>
+          </div>
+          <div class="input-group">
+            <label>轮廓色</label>
+            <div class="color-pick-row">
+              <input type="color" id="irOutlineColor" value="#000000">
+              <span id="irOutlineColorHex" style="font-size:12px;color:var(--text2)">未取色</span>
+              <button class="btn-sm btn-secondary" onclick="enableIrColorPick('outline')" style="margin-left:auto">🧪 取色</button>
+            </div>
+          </div>
+          <div class="input-group">
+            <label>轮廓色容差</label>
+            <div class="range-row">
+              <input type="range" id="outlineTolerance" min="1" max="100" value="80" oninput="document.getElementById('outlineTolVal').textContent=this.value">
+              <span class="range-val" id="outlineTolVal">80</span>
+            </div>
+          </div>
+          <div class="input-group">
+            <label>检测灵敏度</label>
+            <div class="range-row">
+              <input type="range" id="detectSensitivity" min="1" max="100" value="30" oninput="document.getElementById('detectSensVal').textContent=this.value">
+              <span class="range-val" id="detectSensVal">30</span>
+            </div>
+          </div>
+          <div class="input-group">
+            <label>最小区域面积 (px²)</label>
+            <div class="range-row">
+              <input type="range" id="minArea" min="10" max="5000" value="100" step="10" oninput="document.getElementById('minAreaVal').textContent=this.value">
+              <span class="range-val" id="minAreaVal">100</span>
+            </div>
+          </div>
+          <div class="input-group">
+            <label>轮廓外扩 (px)</label>
+            <div class="range-row">
+              <input type="range" id="dilatePx" min="-5" max="10" value="-1" oninput="document.getElementById('dilatePxVal').textContent=this.value">
+              <span class="range-val" id="dilatePxVal">-1</span>
+            </div>
+          </div>
+          <button class="btn btn-primary" onclick="smartDetectIrregular()" style="margin-top:6px">🧠 异形检测素材</button>
+        </div>
+
+        <div class="section" id="innerBgSection" style="display:none">
+          <div class="section-title">内轮廓抠图</div>
+          <p style="font-size:12px;color:var(--text2);margin-bottom:8px">去除已检测区域内部的背景色（如角色眼睛、空洞等）</p>
+          <div class="input-group">
+            <label>内部背景色</label>
+            <div class="color-pick-row">
+              <input type="color" id="innerBgColor" value="#ffffff">
+              <span id="innerBgColorHex" style="font-size:12px;color:var(--text2)">未取色</span>
+              <button class="btn-sm btn-secondary" onclick="enableIrColorPick('innerBg')" style="margin-left:auto">🧪 取色</button>
+            </div>
+          </div>
+          <div class="input-group">
+            <label>内部轮廓色（可选）</label>
+            <div class="color-pick-row">
+              <input type="color" id="innerOutlineColor" value="#000000">
+              <span id="innerOutlineColorHex" style="font-size:12px;color:var(--text2)">未取色</span>
+              <button class="btn-sm btn-secondary" onclick="enableIrColorPick('innerOutline')" style="margin-left:auto">🧪 取色</button>
+            </div>
+          </div>
+          <div class="input-group">
+            <label>内部容差</label>
+            <div class="range-row">
+              <input type="range" id="innerTolerance" min="1" max="100" value="50" oninput="document.getElementById('innerTolVal').textContent=this.value">
+              <span class="range-val" id="innerTolVal">50</span>
+            </div>
+          </div>
+          <div class="input-group">
+            <label>内扣轮廓外扩 (px)</label>
+            <div class="range-row">
+              <input type="range" id="innerDilatePx" min="-5" max="10" value="-1" oninput="document.getElementById('innerDilatePxVal').textContent=this.value">
+              <span class="range-val" id="innerDilatePxVal">-1</span>
+            </div>
+          </div>
+          <button class="btn btn-primary" onclick="applyInnerBgRemove()" style="margin-top:6px">🕳️ 去除内部背景</button>
+        </div>
+
+        <div class="section">
+          <div class="section-title">检测到的区域</div>
+          <div class="btn-group" style="margin-bottom:6px">
+            <button class="btn btn-secondary btn-sm" onclick="selectAllRegions(true)">☑ 全选</button>
+            <button class="btn btn-secondary btn-sm" onclick="selectAllRegions(false)">☐ 全不选</button>
+            <button class="btn btn-secondary btn-sm" onclick="invertRegionSelection()">⇄ 反选</button>
+          </div>
+          <div class="region-list" id="regionList">
+            <p style="font-size:12px;color:var(--text2);text-align:center;padding:12px 0">点击上方按钮开始检测</p>
+          </div>
+          <div class="btn-group" style="margin-top:8px">
+            <button class="btn btn-secondary btn-sm" onclick="clearAllRegions()">🗑️ 清空</button>
+            <button class="btn btn-secondary btn-sm" onclick="undoLastRegion()">↩️ 撤销</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== COMMON OUTPUT SETTINGS ===== -->
+      <div class="section">
+        <div class="section-title">输出设置</div>
+        <div class="input-group">
+          <label>输出格式</label>
+          <select id="splitFormat" style="width:100%;padding:6px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text)">
+            <option value="png">PNG (无损，推荐异形)</option>
+            <option value="webp">WebP</option>
+          </select>
+        </div>
+        <label class="checkbox-row" id="trimRow">
+          <input type="checkbox" id="trimTransparent" checked>
+          裁剪透明边缘
+        </label>
+      </div>
+
+      <div class="section">
+        <button class="btn btn-success" onclick="splitAndDownload()" id="splitBtn" disabled>📦 拆分并下载 (ZIP)</button>
+      </div>
+    </div>
+
+    <!-- ===== MERGE PANEL ===== -->
+    <div class="panel" id="mergePanel">
+      <div class="section">
+        <div class="section-title">上传素材</div>
+        <div class="upload-zone" id="mergeUpload" onclick="document.getElementById('mergeFiles').click()">
+          <div class="icon">📁</div>
+          <p>点击或拖拽上传多张素材</p>
+          <p style="font-size:11px;margin-top:4px">支持多选 PNG / JPG / WebP</p>
+          <input type="file" id="mergeFiles" accept="image/*" multiple>
+        </div>
+        <p id="mergeCount" style="font-size:12px;color:var(--text2);text-align:center"></p>
+      </div>
+
+      <div class="section">
+        <div class="section-title">排列设置</div>
+        <div class="input-group">
+          <label>每行列数</label>
+          <div class="range-row">
+            <input type="range" id="mergeCols" min="1" max="20" value="4" oninput="document.getElementById('mergeColsVal').textContent=this.value;updateMergePreview()">
+            <span class="range-val" id="mergeColsVal">4</span>
+          </div>
+        </div>
+        <div class="input-group">
+          <label>水平间距 (px)</label>
+          <div class="range-row">
+            <input type="range" id="mergePadX" min="0" max="32" value="0" oninput="document.getElementById('mergePadXVal').textContent=this.value;updateMergePreview()">
+            <span class="range-val" id="mergePadXVal">0</span>
+          </div>
+        </div>
+        <div class="input-group">
+          <label>垂直间距 (px)</label>
+          <div class="range-row">
+            <input type="range" id="mergePadY" min="0" max="32" value="0" oninput="document.getElementById('mergePadYVal').textContent=this.value;updateMergePreview()">
+            <span class="range-val" id="mergePadYVal">0</span>
+          </div>
+        </div>
+        <div class="input-group">
+          <label>内边距 (px)</label>
+          <div class="range-row">
+            <input type="range" id="mergePadding" min="0" max="64" value="0" oninput="document.getElementById('mergePaddingVal').textContent=this.value;updateMergePreview()">
+            <span class="range-val" id="mergePaddingVal">0</span>
+          </div>
+        </div>
+        <label class="checkbox-row">
+          <input type="checkbox" id="mergeUniform" checked onchange="updateMergePreview()">
+          统一单元格大小 (以最大为准)
+        </label>
+        <label class="checkbox-row">
+          <input type="checkbox" id="mergeBgTransparent" checked onchange="updateMergePreview()">
+          背景透明
+        </label>
+        <div class="input-group" id="mergeBgColorGroup" style="display:none">
+          <label>背景颜色</label>
+          <input type="color" id="mergeBgColor" value="#000000" onchange="updateMergePreview()">
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">输出设置</div>
+        <div class="input-group">
+          <label>输出格式</label>
+          <select id="mergeFormat" style="width:100%;padding:6px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text)">
+            <option value="png">PNG (无损)</option>
+            <option value="webp">WebP (推荐)</option>
+          </select>
+        </div>
+        <div class="btn-group" style="margin-top:8px">
+          <button class="btn btn-secondary btn-sm" onclick="sortMergeItems('name')">🔤 按名称</button>
+          <button class="btn btn-secondary btn-sm" onclick="sortMergeItems('size')">📐 按尺寸</button>
+        </div>
+        <div class="btn-group" style="margin-top:6px">
+          <button class="btn btn-secondary btn-sm" onclick="clearMergeItems()">🗑️ 清空</button>
+          <button class="btn btn-secondary btn-sm" onclick="document.getElementById('mergeFiles').click()">➕ 追加</button>
+        </div>
+      </div>
+
+      <div class="section">
+        <button class="btn btn-success" onclick="mergeAndDownload()" id="mergeBtn" disabled>🔗 合并并下载</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main canvas area -->
+  <div class="main" id="mainArea">
+    <div id="splitView" style="display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;height:100%">
+      <div class="empty-state" id="splitEmpty">
+        <div class="icon">🖼️</div>
+        <p>上传一张游戏素材图开始拆分</p>
+      </div>
+      <div class="canvas-wrapper" id="canvasWrapper" style="display:none">
+        <canvas id="mainCanvas"></canvas>
+        <canvas id="overlayCanvas"></canvas>
+      </div>
+    </div>
+
+    <div id="mergeView" style="display:none;width:100%;height:100%;overflow:auto;padding:20px">
+      <div class="empty-state" id="mergeEmpty">
+        <div class="icon">🔗</div>
+        <p>上传多张素材图进行合并</p>
+      </div>
+      <div id="mergePreviewContainer" style="display:none;max-width:900px;margin:0 auto">
+        <div class="merge-grid" id="mergeGrid"></div>
+      </div>
+      <div id="mergeResultContainer" style="display:none;text-align:center;margin-top:16px">
+        <canvas id="mergeResultCanvas" style="max-width:100%;border:1px solid var(--border);border-radius:8px"></canvas>
+      </div>
+    </div>
+
+    <div class="info-bar" id="infoBar" style="display:none">
+      <span>尺寸: <span class="val" id="infoSize">-</span></span>
+      <span id="infoBoxLabel">选框: <span class="val" id="infoBoxes">0</span></span>
+      <span>缩放: <span class="val" id="infoZoom">100%</span></span>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<div id="magnifier" style="display:none;position:fixed;width:140px;height:140px;border-radius:50%;border:3px solid var(--accent);box-shadow:0 4px 20px rgba(0,0,0,.6);pointer-events:none;z-index:1000;overflow:hidden;background:#000">
+  <canvas id="magCanvas" width="140" height="140"></canvas>
+  <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:2px;height:12px;background:rgba(255,255,255,.5);pointer-events:none"></div>
+  <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:12px;height:2px;background:rgba(255,255,255,.5);pointer-events:none"></div>
+</div>
+
+<script>
+// ========== CONSTANTS ==========
+const REGION_COLORS = [
+  '#e94560','#00c853','#2979ff','#ffab00','#aa00ff',
+  '#00bcd4','#ff6d00','#64dd17','#d500f9','#304ffe',
+  '#ff1744','#00e676','#2979ff','#ffc400','#d500f9',
+  '#18ffff','#ff9100','#76ff03','#ea80fc','#448aff'
+];
+
+// ========== STATE ==========
+const state = {
+  mode: 'split',
+  splitMode: 'irregular', // 'rect' | 'irregular'
+  originalImage: null,
+  processedImageData: null,
+  // Rect mode
+  boxes: [],
+  selectedBox: -1,
+  bgPickMode: false,
+  // Irregular mode
+  irColorPickMode: null, // null | 'bg' | 'outline' | 'innerBg' | 'innerOutline'
+  irBgColor: null,       // {r,g,b} or null
+  irOutlineColor: null,  // {r,g,b} or null
+  innerBgColor: null,    // {r,g,b} or null
+  innerOutlineColor: null, // {r,g,b} or null
+  regions: [],       // {id, pixels:[[x,y],...], bounds:{x,y,w,h}, area, color}
+  selectedRegion: -1,
+  innerSelectedRegions: new Set(), // indices of regions selected for inner bg removal
+  // Common
+  scale: 1,
+  // Merge
+  mergeImages: [],
+  // Drag (rect mode only)
+  dragging: false,
+  dragType: null,
+  dragStart: null,
+  dragBoxStart: null,
+  resizeHandle: null,
+};
+
+// ========== UTILS ==========
+function showToast(msg, isError=false) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast' + (isError ? ' error' : '');
+  setTimeout(() => t.classList.add('show'), 10);
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+function hexToRgb(hex) {
+  return { r: parseInt(hex.slice(1,3),16), g: parseInt(hex.slice(3,5),16), b: parseInt(hex.slice(5,7),16) };
+}
+
+// ========== MODE SWITCH ==========
+function switchMode(mode) {
+  state.mode = mode;
+  document.querySelectorAll('.mode-tab').forEach((t,i) => t.classList.toggle('active', (i===0&&mode==='split')||(i===1&&mode==='merge')));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.getElementById(mode+'Panel').classList.add('active');
+  document.getElementById('splitView').style.display = mode==='split' ? 'flex' : 'none';
+  document.getElementById('mergeView').style.display = mode==='merge' ? 'block' : 'none';
+  document.getElementById('infoBar').style.display = (mode==='split' && state.originalImage) ? 'flex' : 'none';
+}
+
+function switchSplitMode(mode) {
+  state.splitMode = mode;
+  document.querySelectorAll('.split-mode-tab').forEach(t => t.classList.remove('active'));
+  event.target.classList.add('active');
+  document.getElementById('rectPanel').classList.toggle('active', mode==='rect');
+  document.getElementById('irregularPanel').classList.toggle('active', mode==='irregular');
+  // Update info bar label
+  document.getElementById('infoBoxLabel').innerHTML = mode==='rect' ? '选框: <span class="val" id="infoBoxes">0</span>' : '区域: <span class="val" id="infoBoxes">0</span>';
+  // Update cursor
+  if (state.originalImage) {
+    overlayCanvas.style.cursor = mode==='rect' ? 'crosshair' : 'pointer';
+  }
+  drawOverlay();
+}
+
+// ========== CANVAS SETUP ==========
+const mainCanvas = document.getElementById('mainCanvas');
+const mainCtx = mainCanvas.getContext('2d');
+const overlayCanvas = document.getElementById('overlayCanvas');
+const overlayCtx = overlayCanvas.getContext('2d');
+
+// ========== FILE UPLOAD ==========
+document.getElementById('splitFile').addEventListener('change', e => {
+  if (e.target.files[0]) loadSplitImage(e.target.files[0]);
+});
+const splitUploadZone = document.getElementById('splitUpload');
+splitUploadZone.addEventListener('dragover', e => { e.preventDefault(); splitUploadZone.classList.add('dragover'); });
+splitUploadZone.addEventListener('dragleave', () => splitUploadZone.classList.remove('dragover'));
+splitUploadZone.addEventListener('drop', e => {
+  e.preventDefault(); splitUploadZone.classList.remove('dragover');
+  if (e.dataTransfer.files[0]) loadSplitImage(e.dataTransfer.files[0]);
+});
+
+function loadSplitImage(file) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    const img = new Image();
+    img.onload = () => {
+      state.originalImage = img;
+      state.processedImageData = null;
+      state.boxes = [];
+      state.selectedBox = -1;
+      state.regions = [];
+      state.selectedRegion = -1;
+      fitImageToView(img);
+      drawMain();
+      drawOverlay();
+      updateRegionListUI();
+      document.getElementById('splitEmpty').style.display = 'none';
+      document.getElementById('canvasWrapper').style.display = 'inline-block';
+      document.getElementById('infoBar').style.display = 'flex';
+      document.getElementById('infoSize').textContent = img.width + ' × ' + img.height;
+      document.getElementById('splitBtn').disabled = false;
+      showToast('图片加载成功 (' + img.width + '×' + img.height + ')');
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function fitImageToView(img) {
+  const area = document.getElementById('mainArea');
+  const maxW = area.clientWidth - 60;
+  const maxH = area.clientHeight - 80;
+  const scale = Math.min(1, maxW / img.width, maxH / img.height);
+  state.scale = scale;
+  mainCanvas.width = Math.round(img.width * scale);
+  mainCanvas.height = Math.round(img.height * scale);
+  overlayCanvas.width = mainCanvas.width;
+  overlayCanvas.height = mainCanvas.height;
+  document.getElementById('infoZoom').textContent = Math.round(scale*100) + '%';
+}
+
+function drawMain() {
+  const img = state.originalImage;
+  if (!img) return;
+  mainCtx.clearRect(0, 0, mainCanvas.width, mainCanvas.height);
+  if (state.processedImageData) {
+    const tmpC = document.createElement('canvas');
+    tmpC.width = img.width; tmpC.height = img.height;
+    tmpC.getContext('2d').putImageData(state.processedImageData, 0, 0);
+    mainCtx.drawImage(tmpC, 0, 0, mainCanvas.width, mainCanvas.height);
+  } else {
+    mainCtx.drawImage(img, 0, 0, mainCanvas.width, mainCanvas.height);
+  }
+}
+
+// ========== OVERLAY DRAWING ==========
+function drawOverlay() {
+  overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+  if (state.splitMode === 'rect') {
+    drawRectOverlay();
+  } else {
+    drawIrregularOverlay();
+  }
+  // Update count
+  const count = state.splitMode === 'rect' ? state.boxes.length : state.regions.length;
+  const el = document.getElementById('infoBoxes');
+  if (el) el.textContent = count;
+}
+
+function drawRectOverlay() {
+  const s = state.scale;
+  state.boxes.forEach((box, i) => {
+    const x = box.x * s, y = box.y * s, w = box.w * s, h = box.h * s;
+    overlayCtx.fillStyle = i === state.selectedBox ? 'rgba(233,69,96,0.25)' : 'rgba(233,69,96,0.08)';
+    overlayCtx.fillRect(x, y, w, h);
+    overlayCtx.strokeStyle = i === state.selectedBox ? '#ff6b9d' : '#e94560';
+    overlayCtx.lineWidth = i === state.selectedBox ? 2.5 : 1.5;
+    overlayCtx.setLineDash(i === state.selectedBox ? [] : [4, 3]);
+    overlayCtx.strokeRect(x, y, w, h);
+    overlayCtx.setLineDash([]);
+    // Label
+    overlayCtx.fillStyle = '#e94560';
+    overlayCtx.font = 'bold 10px sans-serif';
+    overlayCtx.fillText('#' + (i+1), x + 3, y - 4 > 10 ? y - 4 : y + 12);
+    overlayCtx.fillStyle = 'rgba(255,255,255,0.6)';
+    overlayCtx.font = '9px sans-serif';
+    overlayCtx.fillText(box.w + '×' + box.h, x + 3, y + h - 3);
+    // Handles
+    if (i === state.selectedBox) {
+      overlayCtx.fillStyle = '#fff';
+      [[x,y],[x+w,y],[x,y+h],[x+w,y+h]].forEach(([hx,hy]) => {
+        overlayCtx.fillRect(hx-4, hy-4, 8, 8);
+      });
+    }
+  });
+}
+
+function drawIrregularOverlay() {
+  if (state.regions.length === 0) return;
+  const img = state.originalImage;
+  const w = img.width, h = img.height;
+  const s = state.scale;
+
+  // Create offscreen canvas at original resolution for pixel-perfect rendering
+  const offC = document.createElement('canvas');
+  offC.width = w; offC.height = h;
+  const offCtx = offC.getContext('2d');
+  const imgData = offCtx.createImageData(w, h);
+  const d = imgData.data;
+
+  // Draw each region
+  state.regions.forEach((region, ri) => {
+    const isSelected = ri === state.selectedRegion;
+    const isInnerChecked = state.innerSelectedRegions.has(ri);
+    const color = hexToRgb(region.color);
+    const alpha = isSelected ? 100 : isInnerChecked ? 80 : 40;
+
+    // First pass: collect all pixels of this region into a set for edge detection
+    const pixelSet = new Uint8Array(w * h);
+    region.pixels.forEach(([px, py]) => {
+      pixelSet[py * w + px] = 1;
+    });
+
+    // Draw fill
+    region.pixels.forEach(([px, py]) => {
+      const idx = (py * w + px) * 4;
+      d[idx] = color.r;
+      d[idx+1] = color.g;
+      d[idx+2] = color.b;
+      d[idx+3] = alpha;
+    });
+
+    // Draw outline (edge pixels)
+    region.pixels.forEach(([px, py]) => {
+      let isEdge = false;
+      for (let dy = -1; dy <= 1 && !isEdge; dy++) {
+        for (let dx = -1; dx <= 1 && !isEdge; dx++) {
+          if (dx === 0 && dy === 0) continue;
+          const nx = px + dx, ny = py + dy;
+          if (nx < 0 || nx >= w || ny < 0 || ny >= h || !pixelSet[ny * w + nx]) {
+            isEdge = true;
+          }
+        }
+      }
+      if (isEdge) {
+        const idx = (py * w + px) * 4;
+        if (isInnerChecked) {
+          // Green dashed outline for inner-checked regions
+          d[idx] = 0; d[idx+1] = 200; d[idx+2] = 83;
+          d[idx+3] = 230;
+        } else {
+          d[idx] = isSelected ? 255 : color.r;
+          d[idx+1] = isSelected ? 255 : color.g;
+          d[idx+2] = isSelected ? 255 : color.b;
+          d[idx+3] = isSelected ? 220 : 160;
+        }
+      }
+    }
+    );
+  });
+
+  offCtx.putImageData(imgData, 0, 0);
+
+  // Draw scaled onto overlay
+  overlayCtx.imageSmoothingEnabled = false;
+  overlayCtx.drawImage(offC, 0, 0, overlayCanvas.width, overlayCanvas.height);
+
+  // Draw bounding box + highlight for inner-checked regions
+  state.regions.forEach((region, ri) => {
+    if (!state.innerSelectedRegions.has(ri)) return;
+    const b = region.bounds;
+    const bx = b.x * s, by = b.y * s, bw = b.w * s, bh = b.h * s;
+    // Bright green dashed bounding box
+    overlayCtx.strokeStyle = '#00c853';
+    overlayCtx.lineWidth = 2.5;
+    overlayCtx.setLineDash([6, 3]);
+    overlayCtx.strokeRect(bx - 2, by - 2, bw + 4, bh + 4);
+    overlayCtx.setLineDash([]);
+    // Corner markers
+    const cm = 8;
+    overlayCtx.strokeStyle = '#00ff88';
+    overlayCtx.lineWidth = 3;
+    // Top-left
+    overlayCtx.beginPath(); overlayCtx.moveTo(bx-2, by-2+cm); overlayCtx.lineTo(bx-2, by-2); overlayCtx.lineTo(bx-2+cm, by-2); overlayCtx.stroke();
+    // Top-right
+    overlayCtx.beginPath(); overlayCtx.moveTo(bx+bw+2-cm, by-2); overlayCtx.lineTo(bx+bw+2, by-2); overlayCtx.lineTo(bx+bw+2, by-2+cm); overlayCtx.stroke();
+    // Bottom-left
+    overlayCtx.beginPath(); overlayCtx.moveTo(bx-2, by+bh+2-cm); overlayCtx.lineTo(bx-2, by+bh+2); overlayCtx.lineTo(bx-2+cm, by+bh+2); overlayCtx.stroke();
+    // Bottom-right
+    overlayCtx.beginPath(); overlayCtx.moveTo(bx+bw+2-cm, by+bh+2); overlayCtx.lineTo(bx+bw+2, by+bh+2); overlayCtx.lineTo(bx+bw+2, by+bh+2-cm); overlayCtx.stroke();
+    // "✓" badge
+    overlayCtx.fillStyle = '#00c853';
+    overlayCtx.font = 'bold 12px sans-serif';
+    overlayCtx.fillText('✓', bx + bw + 5, by + 12);
+  });
+
+  // Draw labels for each region
+  state.regions.forEach((region, ri) => {
+    const isSelected = ri === state.selectedRegion;
+    const lx = (region.bounds.x + 2) * s;
+    const ly = (region.bounds.y - 2) * s;
+    // Background for label
+    overlayCtx.fillStyle = region.color;
+    const label = '#' + (ri + 1) + ' (' + region.area + 'px)';
+    overlayCtx.font = (isSelected ? 'bold ' : '') + '10px sans-serif';
+    const tw = overlayCtx.measureText(label).width;
+    overlayCtx.fillRect(lx - 1, ly - 12, tw + 6, 14);
+    overlayCtx.fillStyle = '#fff';
+    overlayCtx.fillText(label, lx + 2, ly - 1);
+  });
+}
+
+// ========== BG REMOVE ==========
+function toggleBgRemove() {
+  document.getElementById('bgRemoveOptions').style.display = document.getElementById('bgRemoveToggle').checked ? 'block' : 'none';
+}
+
+function enableBgPickMode() {
+  state.bgPickMode = true;
+  overlayCanvas.style.cursor = 'crosshair';
+  showToast('点击图片上的背景区域取色');
+}
+
+function enableIrColorPick(type) {
+  state.irColorPickMode = type;
+  overlayCanvas.style.cursor = 'crosshair';
+  const labels = { bg:'背景区域', outline:'轮廓线', innerBg:'内部背景', innerOutline:'内部轮廓线' };
+  showToast('点击图片上的' + (labels[type]||type) + '取色');
+}
+
+// ========== MAGNIFIER ==========
+const magEl = document.getElementById('magnifier');
+const magCanvas = document.getElementById('magCanvas');
+const magCtx = magCanvas.getContext('2d');
+const MAG_SIZE = 140;
+const MAG_ZOOM = 8; // 8x zoom
+const MAG_RADIUS = Math.floor(MAG_SIZE / MAG_ZOOM / 2);
+
+function showMagnifier(e) {
+  if (!state.originalImage) return;
+  magEl.style.display = 'block';
+  // Position magnifier offset from cursor
+  const rect = overlayCanvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+  const s = state.scale;
+  const ox = Math.floor(mx / s), oy = Math.floor(my / s);
+  const img = state.originalImage;
+
+  // Draw zoomed region centered on cursor
+  magCtx.imageSmoothingEnabled = false;
+  magCtx.clearRect(0, 0, MAG_SIZE, MAG_SIZE);
+  // Fill black background
+  magCtx.fillStyle = '#000';
+  magCtx.fillRect(0, 0, MAG_SIZE, MAG_SIZE);
+
+  const srcX = ox - MAG_RADIUS;
+  const srcY = oy - MAG_RADIUS;
+  const srcW = MAG_RADIUS * 2;
+  const srcH = MAG_RADIUS * 2;
+
+  // Create temp canvas to extract the region
+  const tmpC = document.createElement('canvas');
+  tmpC.width = img.width; tmpC.height = img.height;
+  const tmpCtx = tmpC.getContext('2d');
+  tmpCtx.drawImage(img, 0, 0);
+
+  magCtx.drawImage(tmpC, srcX, srcY, srcW, srcH, 0, 0, MAG_SIZE, MAG_SIZE);
+
+  // Draw pixel grid
+  magCtx.strokeStyle = 'rgba(255,255,255,0.15)';
+  magCtx.lineWidth = 0.5;
+  const cellSize = MAG_ZOOM;
+  for (let i = 0; i <= srcW; i++) {
+    magCtx.beginPath();
+    magCtx.moveTo(i * cellSize, 0);
+    magCtx.lineTo(i * cellSize, MAG_SIZE);
+    magCtx.stroke();
+  }
+  for (let j = 0; j <= srcH; j++) {
+    magCtx.beginPath();
+    magCtx.moveTo(0, j * cellSize);
+    magCtx.lineTo(MAG_SIZE, j * cellSize);
+    magCtx.stroke();
+  }
+
+  // Highlight center pixel
+  magCtx.strokeStyle = 'rgba(233,69,96,0.8)';
+  magCtx.lineWidth = 2;
+  magCtx.strokeRect(MAG_RADIUS * cellSize, MAG_RADIUS * cellSize, cellSize, cellSize);
+
+  // Position the magnifier near cursor
+  let left = e.clientX + 20;
+  let top = e.clientY - MAG_SIZE - 10;
+  if (left + MAG_SIZE > window.innerWidth) left = e.clientX - MAG_SIZE - 20;
+  if (top < 0) top = e.clientY + 20;
+  magEl.style.left = left + 'px';
+  magEl.style.top = top + 'px';
+}
+
+function hideMagnifier() {
+  magEl.style.display = 'none';
+}
+
+// Hide magnifier when mouse leaves canvas
+overlayCanvas.addEventListener('mouseleave', () => {
+  hideMagnifier();
+});
+
+document.getElementById('bgColor').addEventListener('input', e => {
+  document.getElementById('bgColorHex').textContent = e.target.value.toUpperCase();
+});
+
+function applyBgRemove() {
+  if (!state.originalImage) return;
+  const img = state.originalImage;
+  const tmpC = document.createElement('canvas');
+  tmpC.width = img.width; tmpC.height = img.height;
+  const tmpCtx = tmpC.getContext('2d');
+  if (state.processedImageData) {
+    tmpCtx.putImageData(state.processedImageData, 0, 0);
+  } else {
+    tmpCtx.drawImage(img, 0, 0);
+  }
+  const imageData = tmpCtx.getImageData(0, 0, img.width, img.height);
+  const data = imageData.data;
+  const bg = hexToRgb(document.getElementById('bgColor').value);
+  const tol = parseInt(document.getElementById('bgTolerance').value);
+
+  for (let i = 0; i < data.length; i += 4) {
+    const dr = data[i] - bg.r, dg = data[i+1] - bg.g, db = data[i+2] - bg.b;
+    const dist = Math.sqrt(dr*dr + dg*dg + db*db);
+    if (dist <= tol * 2.55) {
+      data[i+3] = Math.round(Math.min(255, (dist / (tol * 2.55)) * 255));
+    }
+  }
+  state.processedImageData = imageData;
+  drawMain();
+  showToast('背景已移除');
+}
+
+// ========== RECT MODE: BOX INTERACTIONS ==========
+overlayCanvas.addEventListener('mousedown', e => {
+  const rect = overlayCanvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+  const s = state.scale;
+
+  // BG pick mode
+  if (state.bgPickMode) {
+    state.bgPickMode = false;
+    hideMagnifier();
+    overlayCanvas.style.cursor = state.splitMode === 'rect' ? 'crosshair' : 'pointer';
+    const ox = Math.floor(mx / s), oy = Math.floor(my / s);
+    const tmpC = document.createElement('canvas');
+    tmpC.width = state.originalImage.width; tmpC.height = state.originalImage.height;
+    tmpC.getContext('2d').drawImage(state.originalImage, 0, 0);
+    const pd = tmpC.getContext('2d').getImageData(ox, oy, 1, 1).data;
+    const hex = '#' + [pd[0],pd[1],pd[2]].map(v=>v.toString(16).padStart(2,'0')).join('');
+    document.getElementById('bgColor').value = hex;
+    document.getElementById('bgColorHex').textContent = hex.toUpperCase();
+    showToast('已取色: ' + hex.toUpperCase());
+    return;
+  }
+
+  // Irregular color pick mode (bg or outline)
+  if (state.irColorPickMode) {
+    const type = state.irColorPickMode;
+    state.irColorPickMode = null;
+    hideMagnifier();
+    overlayCanvas.style.cursor = 'pointer';
+    const ox = Math.floor(mx / s), oy = Math.floor(my / s);
+    const tmpC = document.createElement('canvas');
+    tmpC.width = state.originalImage.width; tmpC.height = state.originalImage.height;
+    tmpC.getContext('2d').drawImage(state.originalImage, 0, 0);
+    const pd = tmpC.getContext('2d').getImageData(ox, oy, 1, 1).data;
+    const hex = '#' + [pd[0],pd[1],pd[2]].map(v=>v.toString(16).padStart(2,'0')).join('');
+    const rgb = { r: pd[0], g: pd[1], b: pd[2] };
+    if (type === 'bg') {
+      state.irBgColor = rgb;
+      document.getElementById('irBgColor').value = hex;
+      document.getElementById('irBgColorHex').textContent = hex.toUpperCase();
+      showToast('已取背景色: ' + hex.toUpperCase());
+    } else if (type === 'outline') {
+      state.irOutlineColor = rgb;
+      document.getElementById('irOutlineColor').value = hex;
+      document.getElementById('irOutlineColorHex').textContent = hex.toUpperCase();
+      showToast('已取轮廓色: ' + hex.toUpperCase());
+    } else if (type === 'innerBg') {
+      state.innerBgColor = rgb;
+      document.getElementById('innerBgColor').value = hex;
+      document.getElementById('innerBgColorHex').textContent = hex.toUpperCase();
+      showToast('已取内部背景色: ' + hex.toUpperCase());
+    } else if (type === 'innerOutline') {
+      state.innerOutlineColor = rgb;
+      document.getElementById('innerOutlineColor').value = hex;
+      document.getElementById('innerOutlineColorHex').textContent = hex.toUpperCase();
+      showToast('已取内部轮廓色: ' + hex.toUpperCase());
+    }
+    return;
+  }
+
+  // Irregular mode: click to select region
+  if (state.splitMode === 'irregular') {
+    const ox = Math.floor(mx / s), oy = Math.floor(my / s);
+    let found = -1;
+    for (let i = state.regions.length - 1; i >= 0; i--) {
+      const r = state.regions[i];
+      // Check if click is within bounds first (fast check)
+      if (ox >= r.bounds.x && ox < r.bounds.x + r.bounds.w &&
+          oy >= r.bounds.y && oy < r.bounds.y + r.bounds.h) {
+        // Check if pixel belongs to this region
+        if (r.pixelSet && r.pixelSet[oy * state.originalImage.width + ox]) {
+          found = i;
+          break;
+        }
+      }
+    }
+    state.selectedRegion = found;
+    if (found >= 0) {
+      if (state.innerSelectedRegions.has(found)) {
+        state.innerSelectedRegions.delete(found);
+      } else {
+        state.innerSelectedRegions.add(found);
+      }
+    }
+    drawOverlay();
+    updateRegionListUI();
+    return;
+  }
+
+  // Rect mode interactions
+  // Check resize handle
+  if (state.selectedBox >= 0) {
+    const box = state.boxes[state.selectedBox];
+    const bx = box.x*s, by = box.y*s, bw = box.w*s, bh = box.h*s;
+    const handles = [
+      {name:'tl', x:bx, y:by}, {name:'tr', x:bx+bw, y:by},
+      {name:'bl', x:bx, y:by+bh}, {name:'br', x:bx+bw, y:by+bh}
+    ];
+    for (const h of handles) {
+      if (Math.abs(mx-h.x) < 8 && Math.abs(my-h.y) < 8) {
+        state.dragging = true;
+        state.dragType = 'resize';
+        state.resizeHandle = h.name;
+        state.dragStart = {x: mx, y: my};
+        state.dragBoxStart = {...box};
+        return;
+      }
+    }
+  }
+
+  // Check click inside box
+  for (let i = state.boxes.length - 1; i >= 0; i--) {
+    const box = state.boxes[i];
+    if (mx >= box.x*s && mx <= (box.x+box.w)*s && my >= box.y*s && my <= (box.y+box.h)*s) {
+      state.selectedBox = i;
+      state.dragging = true;
+      state.dragType = 'move';
+      state.dragStart = {x: mx, y: my};
+      state.dragBoxStart = {...box};
+      drawOverlay();
+      return;
+    }
+  }
+
+  // Create new box
+  state.selectedBox = -1;
+  state.dragging = true;
+  state.dragType = 'create';
+  state.dragStart = {x: mx, y: my};
+  state.boxes.push({x: mx/s, y: my/s, w: 0, h: 0});
+  state.selectedBox = state.boxes.length - 1;
+  drawOverlay();
+});
+
+overlayCanvas.addEventListener('mousemove', e => {
+  // Magnifier for color pick modes
+  if (state.bgPickMode || state.irColorPickMode) {
+    showMagnifier(e);
+    return;
+  }
+  hideMagnifier();
+
+  if (state.splitMode !== 'rect') {
+    overlayCanvas.style.cursor = state.bgPickMode ? 'crosshair' : 'pointer';
+    return;
+  }
+  if (!state.dragging) { updateCursor(e); return; }
+  const rect = overlayCanvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+  const s = state.scale;
+  const dx = (mx - state.dragStart.x) / s, dy = (my - state.dragStart.y) / s;
+  const box = state.boxes[state.selectedBox];
+  const ob = state.dragBoxStart;
+
+  if (state.dragType === 'create') {
+    box.w = Math.abs(dx); box.h = Math.abs(dy);
+    box.x = dx >= 0 ? ob.x : ob.x + dx;
+    box.y = dy >= 0 ? ob.y : ob.y + dy;
+  } else if (state.dragType === 'move') {
+    box.x = Math.max(0, Math.min(state.originalImage.width - box.w, ob.x + dx));
+    box.y = Math.max(0, Math.min(state.originalImage.height - box.h, ob.y + dy));
+  } else if (state.dragType === 'resize') {
+    const h = state.resizeHandle;
+    let nx = ob.x, ny = ob.y, nw = ob.w, nh = ob.h;
+    if (h.includes('l')) { nx = ob.x + dx; nw = ob.w - dx; }
+    if (h.includes('r')) { nw = ob.w + dx; }
+    if (h.includes('t')) { ny = ob.y + dy; nh = ob.h - dy; }
+    if (h.includes('b')) { nh = ob.h + dy; }
+    if (nw < 4) { if (h.includes('l')) nx = ob.x + ob.w - 4; nw = 4; }
+    if (nh < 4) { if (h.includes('t')) ny = ob.y + ob.h - 4; nh = 4; }
+    nx = Math.max(0, nx); ny = Math.max(0, ny);
+    if (nx + nw > state.originalImage.width) nw = state.originalImage.width - nx;
+    if (ny + nh > state.originalImage.height) nh = state.originalImage.height - ny;
+    box.x = nx; box.y = ny; box.w = nw; box.h = nh;
+  }
+  drawOverlay();
+});
+
+overlayCanvas.addEventListener('mouseup', () => {
+  if (state.dragging && state.dragType === 'create') {
+    const box = state.boxes[state.selectedBox];
+    if (box.w < 4 || box.h < 4) { state.boxes.pop(); state.selectedBox = -1; }
+  }
+  state.dragging = false; state.dragType = null;
+  drawOverlay();
+});
+
+overlayCanvas.addEventListener('mouseleave', () => {
+  if (state.dragging) { state.dragging = false; state.dragType = null; }
+});
+
+function updateCursor(e) {
+  if (state.bgPickMode || state.irColorPickMode) { overlayCanvas.style.cursor = 'crosshair'; return; }
+  if (state.splitMode === 'irregular') { overlayCanvas.style.cursor = 'pointer'; return; }
+  const rect = overlayCanvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+  const s = state.scale;
+  if (state.selectedBox >= 0) {
+    const box = state.boxes[state.selectedBox];
+    const bx = box.x*s, by = box.y*s, bw = box.w*s, bh = box.h*s;
+    const handles = [
+      {name:'tl', x:bx, y:by, c:'nw-resize'}, {name:'tr', x:bx+bw, y:by, c:'ne-resize'},
+      {name:'bl', x:bx, y:by+bh, c:'sw-resize'}, {name:'br', x:bx+bw, y:by+bh, c:'se-resize'}
+    ];
+    for (const h of handles) {
+      if (Math.abs(mx-h.x) < 8 && Math.abs(my-h.y) < 8) { overlayCanvas.style.cursor = h.c; return; }
+    }
+  }
+  for (let i = state.boxes.length - 1; i >= 0; i--) {
+    const box = state.boxes[i];
+    if (mx >= box.x*s && mx <= (box.x+box.w)*s && my >= box.y*s && my <= (box.y+box.h)*s) {
+      overlayCanvas.style.cursor = 'move'; return;
+    }
+  }
+  overlayCanvas.style.cursor = 'crosshair';
+}
+
+// Keyboard
+document.addEventListener('keydown', e => {
+  if (state.mode !== 'split') return;
+
+  // Irregular mode
+  if (state.splitMode === 'irregular') {
+    if ((e.key === 'Delete' || e.key === 'Backspace') && state.selectedRegion >= 0) {
+      state.regions.splice(state.selectedRegion, 1);
+      state.selectedRegion = -1;
+      drawOverlay();
+      updateRegionListUI();
+      e.preventDefault();
+    } else if (e.key === 'Escape') {
+      state.selectedRegion = -1;
+      drawOverlay();
+      updateRegionListUI();
+    }
+    return;
+  }
+
+  // Rect mode
+  if (state.selectedBox < 0) return;
+  const box = state.boxes[state.selectedBox];
+  const step = e.shiftKey ? 10 : 1;
+  if (e.key === 'Delete' || e.key === 'Backspace') {
+    state.boxes.splice(state.selectedBox, 1); state.selectedBox = -1;
+    drawOverlay(); e.preventDefault();
+  } else if (e.key === 'ArrowLeft') { box.x = Math.max(0, box.x - step); drawOverlay(); e.preventDefault(); }
+  else if (e.key === 'ArrowRight') { box.x = Math.min(state.originalImage.width - box.w, box.x + step); drawOverlay(); e.preventDefault(); }
+  else if (e.key === 'ArrowUp') { box.y = Math.max(0, box.y - step); drawOverlay(); e.preventDefault(); }
+  else if (e.key === 'ArrowDown') { box.y = Math.min(state.originalImage.height - box.h, box.y + step); drawOverlay(); e.preventDefault(); }
+  else if (e.key === 'Escape') { state.selectedBox = -1; drawOverlay(); }
+});
+
+// ========== RECT MODE: GRID ==========
+function autoGrid() {
+  if (!state.originalImage) return;
+  const cols = parseInt(document.getElementById('gridCols').value);
+  const rows = parseInt(document.getElementById('gridRows').value);
+  const iw = state.originalImage.width, ih = state.originalImage.height;
+  const tw = iw / cols, th = ih / rows;
+  state.boxes = [];
+  for (let r = 0; r < rows; r++)
+    for (let c = 0; c < cols; c++)
+      state.boxes.push({ x: Math.round(c*tw), y: Math.round(r*th), w: Math.round(tw), h: Math.round(th) });
+  state.selectedBox = -1;
+  drawOverlay();
+  showToast('已生成 ' + (cols*rows) + ' 个网格选框');
+}
+
+function clearAllBoxes() { state.boxes = []; state.selectedBox = -1; drawOverlay(); }
+function undoLastBox() { if (state.boxes.length > 0) { state.boxes.pop(); state.selectedBox = -1; drawOverlay(); } }
+
+// ========== IRREGULAR MODE: ITERATIVE BFS ==========
+function smartDetectIrregular() {
+  if (!state.originalImage) { showToast('请先上传图片', true); return; }
+  showToast('正在分析图片（迭代BFS）...');
+  setTimeout(() => {
+    try {
+      const t0 = performance.now();
+      const result = runIterativeBFS();
+      const elapsed = (performance.now() - t0).toFixed(0);
+      if (result.regions.length === 0) {
+        showToast('未检测到素材区域，请调高灵敏度', true);
+        return;
+      }
+      state.regions = result.regions;
+      state.selectedRegion = -1;
+      drawOverlay();
+      updateRegionListUI();
+      showToast('检测到 ' + result.regions.length + ' 个异形区域 (' + elapsed + 'ms)');
+    } catch (e) {
+      console.error(e);
+      showToast('检测出错: ' + e.message, true);
+    }
+  }, 50);
+}
+
+function runIterativeBFS() {
+  const img = state.originalImage;
+  const w = img.width, h = img.height;
+  const sensitivity = parseInt(document.getElementById('detectSensitivity').value);
+  const minArea = parseInt(document.getElementById('minArea').value);
+
+  // Step 1: Get pixel data
+  const tmpC = document.createElement('canvas');
+  tmpC.width = w; tmpC.height = h;
+  const tmpCtx = tmpC.getContext('2d');
+  tmpCtx.drawImage(img, 0, 0);
+  const imageData = tmpCtx.getImageData(0, 0, w, h);
+  const data = imageData.data;
+
+  // Step 2: Background detection using user-annotated colors
+  // - Pixels close to background color → candidate background
+  // - Pixels close to outline color → wall (blocks BFS)
+  // - BFS from edges through candidate background, walls stop the flood
+
+  const hasBg = state.irBgColor !== null;
+  const hasOutline = state.irOutlineColor !== null;
+
+  if (!hasBg) {
+    showToast('请先取背景色', true);
+    return { regions: [] };
+  }
+
+  const bgColor = state.irBgColor;
+  const outlineColor = state.irOutlineColor;
+  const tol = sensitivity * 2.5; // tolerance for "close to" comparison
+  const outlineTol = tol * (parseInt(document.getElementById('outlineTolerance').value) / 100);
+
+  // Classify each pixel: 0=background, 1=foreground, 2=wall(outline)
+  const mask = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i++) {
+    const pi = i * 4;
+    const r = data[pi], g = data[pi+1], b = data[pi+2];
+
+    // Check if this pixel is close to outline color → wall
+    if (hasOutline) {
+      const odr = r - outlineColor.r, odg = g - outlineColor.g, odb = b - outlineColor.b;
+      const oDist = Math.sqrt(odr*odr + odg*odg + odb*odb);
+      if (oDist <= outlineTol) {
+        mask[i] = 2; // wall
+        continue;
+      }
+    }
+
+    // Check if this pixel is close to background color → candidate background
+    const bdr = r - bgColor.r, bdg = g - bgColor.g, bdb = b - bgColor.b;
+    const bDist = Math.sqrt(bdr*bdr + bdg*bdg + bdb*bdb);
+    mask[i] = bDist <= tol ? 0 : 1; // 0 = bg candidate, 1 = foreground
+  }
+
+  // BFS from edges: only spread through bg candidates (mask=0), walls (mask=2) block
+  // We need to re-mark: start with all bg candidates as "unvisited" (3)
+  for (let i = 0; i < w * h; i++) {
+    if (mask[i] === 0) mask[i] = 3; // 3 = unvisited bg candidate
+  }
+
+  const bgQueue = [];
+  let bgHead = 0;
+  for (let x = 0; x < w; x++) {
+    if (mask[x] === 3) { mask[x] = 0; bgQueue.push(x, 0); }
+    const bIdx = (h-1) * w + x;
+    if (mask[bIdx] === 3) { mask[bIdx] = 0; bgQueue.push(x, h-1); }
+  }
+  for (let y = 1; y < h-1; y++) {
+    const lIdx = y * w;
+    if (mask[lIdx] === 3) { mask[lIdx] = 0; bgQueue.push(0, y); }
+    const rIdx = y * w + w - 1;
+    if (mask[rIdx] === 3) { mask[rIdx] = 0; bgQueue.push(w-1, y); }
+  }
+
+  const BG_DIRS = [[-1,0],[1,0],[0,-1],[0,1]];
+  while (bgHead < bgQueue.length) {
+    const cx = bgQueue[bgHead++];
+    const cy = bgQueue[bgHead++];
+    for (let d = 0; d < 4; d++) {
+      const nx = cx + BG_DIRS[d][0], ny = cy + BG_DIRS[d][1];
+      if (nx >= 0 && nx < w && ny >= 0 && ny < h && mask[ny * w + nx] === 3) {
+        mask[ny * w + nx] = 0; // reached from edge → confirmed background
+        bgQueue.push(nx, ny);
+      }
+    }
+  }
+
+  // Finalize: unvisited bg candidates (3) → foreground (1), walls (2) → foreground (1)
+  for (let i = 0; i < w * h; i++) {
+    if (mask[i] >= 1) mask[i] = 1; // everything non-background is foreground
+  }
+
+  // Step 2.5: Dilate (>0) or Erode (<0) foreground by N px
+  const dilateN = parseInt(document.getElementById('dilatePx').value);
+  if (dilateN > 0) {
+    // Dilate: expand foreground outward
+    for (let pass = 0; pass < dilateN; pass++) {
+      const dilated = new Uint8Array(w * h);
+      dilated.set(mask);
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          if (mask[y * w + x] === 1) continue;
+          if ((x > 0 && mask[y * w + x - 1] === 1) ||
+              (x < w-1 && mask[y * w + x + 1] === 1) ||
+              (y > 0 && mask[(y-1) * w + x] === 1) ||
+              (y < h-1 && mask[(y+1) * w + x] === 1)) {
+            dilated[y * w + x] = 1;
+          }
+        }
+      }
+      mask.set(dilated);
+    }
+  } else if (dilateN < 0) {
+    // Erode: shrink foreground inward
+    const erodeN = -dilateN;
+    for (let pass = 0; pass < erodeN; pass++) {
+      const eroded = new Uint8Array(w * h);
+      eroded.set(mask);
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          if (mask[y * w + x] === 0) continue;
+          // If any 4-neighbor is background, this pixel becomes background
+          if ((x === 0 || mask[y * w + x - 1] === 0) ||
+              (x === w-1 || mask[y * w + x + 1] === 0) ||
+              (y === 0 || mask[(y-1) * w + x] === 0) ||
+              (y === h-1 || mask[(y+1) * w + x] === 0)) {
+            eroded[y * w + x] = 0;
+          }
+        }
+      }
+      mask.set(eroded);
+    }
+  }
+
+  // Step 3.5: Morphological closing (dilate then erode) to bridge small gaps
+  // This ensures one complete sprite is not split into multiple fragments
+  // We use the closed mask ONLY for connectivity analysis, not for pixel extraction
+  const closedMask = new Uint8Array(w * h);
+  closedMask.set(mask);
+
+  // Dilate: if any 8-neighbor is foreground, this pixel becomes foreground
+  const dilated = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (closedMask[y * w + x] === 1) { dilated[y * w + x] = 1; continue; }
+      let found = false;
+      for (let dy = -1; dy <= 1 && !found; dy++) {
+        for (let dx = -1; dx <= 1 && !found; dx++) {
+          if (dx === 0 && dy === 0) continue;
+          const nx = x + dx, ny = y + dy;
+          if (nx >= 0 && nx < w && ny >= 0 && ny < h && closedMask[ny * w + nx] === 1) {
+            found = true;
+          }
+        }
+      }
+      dilated[y * w + x] = found ? 1 : 0;
+    }
+  }
+
+  // Erode: only stay foreground if ALL 8-neighbors are foreground
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (dilated[y * w + x] === 0) continue;
+      let allFg = true;
+      for (let dy = -1; dy <= 1 && allFg; dy++) {
+        for (let dx = -1; dx <= 1 && allFg; dx++) {
+          const nx = x + dx, ny = y + dy;
+          if (nx >= 0 && nx < w && ny >= 0 && ny < h && dilated[ny * w + nx] === 0) {
+            allFg = false;
+          }
+        }
+      }
+      closedMask[y * w + x] = allFg ? 1 : 0;
+    }
+  }
+
+  // Step 4: Iterative BFS on CLOSED mask for connectivity analysis
+  // But extract pixels using the ORIGINAL mask (preserves exact shape)
+  const regions = [];
+  let regionId = 0;
+  const DIRS = [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]]; // 8-connectivity
+
+  while (true) {
+    // Find first foreground pixel in closed mask (scan from top-left)
+    let startX = -1, startY = -1;
+    outer:
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        if (closedMask[y * w + x] === 1) {
+          startX = x; startY = y;
+          break outer;
+        }
+      }
+    }
+    if (startX === -1) break;
+
+    // BFS on closed mask to find connected region
+    const regionPixels = []; // pixels in closed mask (for bounds)
+    const queue = [startX, startY];
+    let head = 0;
+    closedMask[startY * w + startX] = 2;
+    let minX = startX, maxX = startX, minY = startY, maxY = startY;
+
+    while (head < queue.length) {
+      const cx = queue[head++];
+      const cy = queue[head++];
+      regionPixels.push([cx, cy]);
+      if (cx < minX) minX = cx;
+      if (cx > maxX) maxX = cx;
+      if (cy < minY) minY = cy;
+      if (cy > maxY) maxY = cy;
+
+      for (let d = 0; d < 8; d++) {
+        const nx = cx + DIRS[d][0], ny = cy + DIRS[d][1];
+        if (nx >= 0 && nx < w && ny >= 0 && ny < h && closedMask[ny * w + nx] === 1) {
+          closedMask[ny * w + nx] = 2;
+          queue.push(nx, ny);
+        }
+      }
+    }
+
+    // Now collect ALL original foreground pixels within this region's bounds
+    // that are connected (via original mask) to the closed region
+    // Simple approach: collect all original mask=1 pixels inside the bounding box
+    // that overlap with the closed region
+    const exactPixels = [];
+    const pixelSet = new Uint8Array(w * h);
+    regionPixels.forEach(([px, py]) => { pixelSet[py * w + px] = 1; });
+
+    // Expand: include all original foreground pixels that are adjacent to already-included pixels
+    // This captures the exact original shape within the connected region
+    const expandQueue = [];
+    let expandHead = 0;
+    // Seed with all original foreground pixels in the closed region
+    regionPixels.forEach(([px, py]) => {
+      if (mask[py * w + px] === 1) {
+        exactPixels.push([px, py]);
+      } else {
+        // This pixel was only in closed mask, not original - check if any neighbor in original mask is foreground
+        expandQueue.push(px, py);
+      }
+    });
+
+    // BFS expand: from closed-only pixels, reach into original foreground neighbors
+    const visited = new Uint8Array(w * h);
+    regionPixels.forEach(([px, py]) => { visited[py * w + px] = 1; });
+
+    while (expandHead < expandQueue.length) {
+      const cx = expandQueue[expandHead++];
+      const cy = expandQueue[expandHead++];
+      for (let d = 0; d < 8; d++) {
+        const nx = cx + DIRS[d][0], ny = cy + DIRS[d][1];
+        if (nx >= 0 && nx < w && ny >= 0 && ny < h && !visited[ny * w + nx]) {
+          visited[ny * w + nx] = 1;
+          if (mask[ny * w + nx] === 1) {
+            exactPixels.push([nx, ny]);
+            expandQueue.push(nx, ny); // continue expanding from this pixel
+          }
+        }
+      }
+    }
+
+    const area = exactPixels.length;
+
+    if (area >= minArea) {
+      const exactPixelSet = new Uint8Array(w * h);
+      exactPixels.forEach(([px, py]) => { exactPixelSet[py * w + px] = 1; });
+
+      // Recalculate tight bounds from exact pixels
+      let eMinX = w, eMaxX = 0, eMinY = h, eMaxY = 0;
+      exactPixels.forEach(([px, py]) => {
+        if (px < eMinX) eMinX = px;
+        if (px > eMaxX) eMaxX = px;
+        if (py < eMinY) eMinY = py;
+        if (py > eMaxY) eMaxY = py;
+      });
+
+      regions.push({
+        id: regionId++,
+        pixels: exactPixels,
+        pixelSet: exactPixelSet,
+        bounds: { x: eMinX, y: eMinY, w: eMaxX - eMinX + 1, h: eMaxY - eMinY + 1 },
+        area: area,
+        color: REGION_COLORS[regions.length % REGION_COLORS.length]
+      });
+    }
+
+    // Mark all pixels in closed mask region as consumed
+    regionPixels.forEach(([px, py]) => { closedMask[py * w + px] = 0; });
+    // Also mark exact pixels in original mask as consumed
+    exactPixels.forEach(([px, py]) => { mask[py * w + px] = 0; });
+  }
+
+  return { regions };
+}
+
+// ========== IRREGULAR MODE: UI ==========
+function updateRegionListUI() {
+  const container = document.getElementById('regionList');
+  // Show/hide inner bg section
+  document.getElementById('innerBgSection').style.display = state.regions.length > 0 ? 'block' : 'none';
+  if (state.regions.length === 0) {
+    container.innerHTML = '<p style="font-size:12px;color:var(--text2);text-align:center;padding:12px 0">点击上方按钮开始检测</p>';
+    return;
+  }
+  container.innerHTML = '';
+  state.regions.forEach((r, i) => {
+    const div = document.createElement('div');
+    const isChecked = state.innerSelectedRegions.has(i);
+    const isSelected = i === state.selectedRegion;
+    let cls = 'region-item';
+    if (isSelected) cls += ' selected';
+    if (isChecked) cls += ' inner-checked';
+    div.className = cls;
+    div.innerHTML = `
+      <input type="checkbox" class="inner-cb" ${isChecked ? 'checked' : ''} title="勾选后进行内轮廓抠图">
+      <span class="color-dot" style="background:${r.color}"></span>
+      <span class="info">#${i+1} ${r.bounds.w}×${r.bounds.h} (${r.area}px)</span>
+      <button class="del" onclick="event.stopPropagation();removeRegion(${i})">×</button>
+    `;
+    const cb = div.querySelector('.inner-cb');
+    cb.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (cb.checked) state.innerSelectedRegions.add(i);
+      else state.innerSelectedRegions.delete(i);
+      div.classList.toggle('inner-checked', cb.checked);
+      drawOverlay();
+    });
+    div.addEventListener('click', () => {
+      // Toggle inner selection on click
+      if (state.innerSelectedRegions.has(i)) {
+        state.innerSelectedRegions.delete(i);
+      } else {
+        state.innerSelectedRegions.add(i);
+      }
+      state.selectedRegion = i;
+      updateRegionListUI();
+      drawOverlay();
+    });
+    container.appendChild(div);
+  });
+}
+
+function selectAllRegions(selectAll) {
+  state.innerSelectedRegions.clear();
+  if (selectAll) state.regions.forEach((_, i) => state.innerSelectedRegions.add(i));
+  updateRegionListUI();
+  drawOverlay();
+}
+
+function invertRegionSelection() {
+  const newSet = new Set();
+  state.regions.forEach((_, i) => {
+    if (!state.innerSelectedRegions.has(i)) newSet.add(i);
+  });
+  state.innerSelectedRegions = newSet;
+  updateRegionListUI();
+  drawOverlay();
+}
+
+function removeRegion(i) {
+  state.regions.splice(i, 1);
+  if (state.selectedRegion >= state.regions.length) state.selectedRegion = -1;
+  if (state.selectedRegion === i) state.selectedRegion = -1;
+  drawOverlay();
+  updateRegionListUI();
+}
+
+function clearAllRegions() {
+  state.regions = [];
+  state.selectedRegion = -1;
+  drawOverlay();
+  updateRegionListUI();
+}
+
+function undoLastRegion() {
+  if (state.regions.length > 0) {
+    state.regions.pop();
+    state.selectedRegion = -1;
+    drawOverlay();
+    updateRegionListUI();
+  }
+}
+
+// ========== INNER BACKGROUND REMOVAL ==========
+function applyInnerBgRemove() {
+  if (!state.innerBgColor) { showToast('请先取内部背景色', true); return; }
+  if (state.regions.length === 0) { showToast('请先检测外轮廓区域', true); return; }
+  if (state.innerSelectedRegions.size === 0) { showToast('请先勾选要抠图的区域', true); return; }
+
+  const img = state.originalImage;
+  const w = img.width, h = img.height;
+  const innerTol = parseInt(document.getElementById('innerTolerance').value) * 2.5;
+  const innerBg = state.innerBgColor;
+  const innerOutline = state.innerOutlineColor;
+  const hasInnerOutline = innerOutline !== null;
+
+  // Get pixel data
+  const tmpC = document.createElement('canvas');
+  tmpC.width = w; tmpC.height = h;
+  const tmpCtx = tmpC.getContext('2d');
+  tmpCtx.drawImage(img, 0, 0);
+  const data = tmpCtx.getImageData(0, 0, w, h).data;
+
+  let totalRemoved = 0;
+
+  state.innerSelectedRegions.forEach(ri => {
+    const region = state.regions[ri];
+    if (!region) return;
+    // Build a local mask for this region's bounding box
+    const b = region.bounds;
+    const localW = b.w, localH = b.h;
+
+    // Create local mask: 0=not in region, 1=region pixel, 2=inner bg to remove
+    const localMask = new Uint8Array(localW * localH);
+
+    // Mark all region pixels
+    region.pixels.forEach(([px, py]) => {
+      localMask[(py - b.y) * localW + (px - b.x)] = 1;
+    });
+
+    // Find inner bg-like pixels within the region
+    for (let ly = 0; ly < localH; ly++) {
+      for (let lx = 0; lx < localW; lx++) {
+        if (localMask[ly * localW + lx] !== 1) continue;
+        const px = lx + b.x, py = ly + b.y;
+        const pi = (py * w + px) * 4;
+        const r = data[pi], g = data[pi+1], bl = data[pi+2];
+
+        // Check if close to inner outline color → wall
+        if (hasInnerOutline) {
+          const odr = r - innerOutline.r, odg = g - innerOutline.g, odb = bl - innerOutline.b;
+          const oDist = Math.sqrt(odr*odr + odg*odg + odb*odb);
+          if (oDist <= innerTol * 0.8) {
+            localMask[ly * localW + lx] = 3; // wall
+            continue;
+          }
+        }
+
+        // Check if close to inner bg color
+        const bdr = r - innerBg.r, bdg = g - innerBg.g, bdb = bl - innerBg.b;
+        const bDist = Math.sqrt(bdr*bdr + bdg*bdg + bdb*bdb);
+        if (bDist <= innerTol) {
+          localMask[ly * localW + lx] = 2; // inner bg candidate
+        }
+      }
+    }
+
+    // BFS from edges of the bounding box (within region only)
+    // to find inner bg reachable from region edges
+    const DIRS = [[-1,0],[1,0],[0,-1],[0,1]];
+    const queue = [];
+    let head = 0;
+
+    // Seed: all bg candidates on the bounding box edges
+    for (let lx = 0; lx < localW; lx++) {
+      if (localMask[lx] === 2) { localMask[lx] = 4; queue.push(lx, 0); }
+      const bIdx = (localH-1) * localW + lx;
+      if (localMask[bIdx] === 2) { localMask[bIdx] = 4; queue.push(lx, localH-1); }
+    }
+    for (let ly = 1; ly < localH-1; ly++) {
+      if (localMask[ly * localW] === 2) { localMask[ly * localW] = 4; queue.push(0, ly); }
+      const rIdx = ly * localW + localW - 1;
+      if (localMask[rIdx] === 2) { localMask[rIdx] = 4; queue.push(localW-1, ly); }
+    }
+
+    // BFS through inner bg candidates, walls block
+    while (head < queue.length) {
+      const cx = queue[head++];
+      const cy = queue[head++];
+      for (let d = 0; d < 4; d++) {
+        const nx = cx + DIRS[d][0], ny = cy + DIRS[d][1];
+        if (nx >= 0 && nx < localW && ny >= 0 && ny < localH && localMask[ny * localW + nx] === 2) {
+          localMask[ny * localW + nx] = 4; // confirmed inner bg from edge
+          queue.push(nx, ny);
+        }
+      }
+    }
+
+    // Remaining mask=2 pixels are "inner bg enclosed by inner outline" → remove them
+    // Also remove mask=4 (reachable from edge) → these are edge gaps, also remove
+    const newPixels = [];
+    region.pixels.forEach(([px, py]) => {
+      const lx = px - b.x, ly = py - b.y;
+      const val = localMask[ly * localW + lx];
+      if (val === 2 || val === 4) {
+        totalRemoved++;
+        // Don't include this pixel
+      } else {
+        newPixels.push([px, py]);
+      }
+    });
+
+    // Update region
+    region.pixels = newPixels;
+    // Rebuild pixelSet
+    region.pixelSet = new Uint8Array(w * h);
+    newPixels.forEach(([px, py]) => { region.pixelSet[py * w + px] = 1; });
+    // Recalculate bounds
+    if (newPixels.length > 0) {
+      let eMinX = w, eMaxX = 0, eMinY = h, eMaxY = 0;
+      newPixels.forEach(([px, py]) => {
+        if (px < eMinX) eMinX = px; if (px > eMaxX) eMaxX = px;
+        if (py < eMinY) eMinY = py; if (py > eMaxY) eMaxY = py;
+      });
+      region.bounds = { x: eMinX, y: eMinY, w: eMaxX - eMinX + 1, h: eMaxY - eMinY + 1 };
+    }
+    region.area = newPixels.length;
+
+    // Apply inner dilate/erode
+    const innerDilateN = parseInt(document.getElementById('innerDilatePx').value);
+    if (innerDilateN !== 0 && newPixels.length > 0) {
+      const ib = region.bounds;
+      const localW = ib.w, localH = ib.h;
+      const localMask = new Uint8Array(localW * localH);
+      newPixels.forEach(([px, py]) => { localMask[(py - ib.y) * localW + (px - ib.x)] = 1; });
+
+      if (innerDilateN > 0) {
+        for (let pass = 0; pass < innerDilateN; pass++) {
+          const dm = new Uint8Array(localW * localH);
+          dm.set(localMask);
+          for (let ly = 0; ly < localH; ly++) {
+            for (let lx = 0; lx < localW; lx++) {
+              if (localMask[ly * localW + lx] === 1) continue;
+              if ((lx > 0 && localMask[ly * localW + lx - 1] === 1) ||
+                  (lx < localW-1 && localMask[ly * localW + lx + 1] === 1) ||
+                  (ly > 0 && localMask[(ly-1) * localW + lx] === 1) ||
+                  (ly < localH-1 && localMask[(ly+1) * localW + lx] === 1)) {
+                dm[ly * localW + lx] = 1;
+              }
+            }
+          }
+          localMask.set(dm);
+        }
+      } else {
+        const erodeN = -innerDilateN;
+        for (let pass = 0; pass < erodeN; pass++) {
+          const em = new Uint8Array(localW * localH);
+          em.set(localMask);
+          for (let ly = 0; ly < localH; ly++) {
+            for (let lx = 0; lx < localW; lx++) {
+              if (localMask[ly * localW + lx] === 0) continue;
+              if ((lx === 0 || localMask[ly * localW + lx - 1] === 0) ||
+                  (lx === localW-1 || localMask[ly * localW + lx + 1] === 0) ||
+                  (ly === 0 || localMask[(ly-1) * localW + lx] === 0) ||
+                  (ly === localH-1 || localMask[(ly+1) * localW + lx] === 0)) {
+                em[ly * localW + lx] = 0;
+              }
+            }
+          }
+          localMask.set(em);
+        }
+      }
+
+      // Rebuild pixels from mask
+      const finalPixels = [];
+      for (let ly = 0; ly < localH; ly++) {
+        for (let lx = 0; lx < localW; lx++) {
+          if (localMask[ly * localW + lx] === 1) {
+            finalPixels.push([lx + ib.x, ly + ib.y]);
+          }
+        }
+      }
+      region.pixels = finalPixels;
+      region.pixelSet = new Uint8Array(w * h);
+      finalPixels.forEach(([px, py]) => { region.pixelSet[py * w + px] = 1; });
+      if (finalPixels.length > 0) {
+        let eMinX = w, eMaxX = 0, eMinY = h, eMaxY = 0;
+        finalPixels.forEach(([px, py]) => {
+          if (px < eMinX) eMinX = px; if (px > eMaxX) eMaxX = px;
+          if (py < eMinY) eMinY = py; if (py > eMaxY) eMaxY = py;
+        });
+        region.bounds = { x: eMinX, y: eMinY, w: eMaxX - eMinX + 1, h: eMaxY - eMinY + 1 };
+      }
+      region.area = finalPixels.length;
+    }
+  });
+
+  state.innerSelectedRegions.clear();
+  drawOverlay();
+  updateRegionListUI();
+  showToast('已移除 ' + totalRemoved + ' 个内部背景像素');
+}
+
+// ========== SPLIT & DOWNLOAD ==========
+async function splitAndDownload() {
+  const isIrregular = state.splitMode === 'irregular';
+  const items = isIrregular ? state.regions : state.boxes;
+  if (items.length === 0) { showToast('请先创建选框或检测区域', true); return; }
+
+  const img = state.originalImage;
+  const format = document.getElementById('splitFormat').value;
+  const trim = document.getElementById('trimTransparent').checked;
+  const mimeType = format === 'webp' ? 'image/webp' : 'image/png';
+  const ext = format === 'webp' ? '.webp' : '.png';
+
+  // Build source canvas
+  const srcCanvas = document.createElement('canvas');
+  srcCanvas.width = img.width; srcCanvas.height = img.height;
+  const srcCtx = srcCanvas.getContext('2d');
+  if (state.processedImageData) {
+    srcCtx.putImageData(state.processedImageData, 0, 0);
+  } else {
+    srcCtx.drawImage(img, 0, 0);
+  }
+  const srcData = srcCtx.getImageData(0, 0, img.width, img.height);
+
+  const zip = new JSZip();
+
+  if (isIrregular) {
+    // Irregular extraction: use pixel mask
+    state.regions.forEach((region, i) => {
+      const b = region.bounds;
+      const tileCanvas = document.createElement('canvas');
+      tileCanvas.width = b.w; tileCanvas.height = b.h;
+      const tileCtx = tileCanvas.getContext('2d');
+      const tileData = tileCtx.createImageData(b.w, b.h);
+      const td = tileData.data;
+      const sd = srcData.data;
+
+      // Copy only pixels belonging to this region
+      region.pixels.forEach(([px, py]) => {
+        const sx = (py * img.width + px) * 4;
+        const dx = ((py - b.y) * b.w + (px - b.x)) * 4;
+        td[dx] = sd[sx];
+        td[dx+1] = sd[sx+1];
+        td[dx+2] = sd[sx+2];
+        td[dx+3] = sd[sx+3]; // Keep original alpha (or use 255 for full opacity)
+        // If we want to force full opacity for foreground pixels:
+        // td[dx+3] = 255;
+      });
+
+      tileCtx.putImageData(tileData, 0, 0);
+
+      let finalCanvas = tileCanvas;
+      if (trim) finalCanvas = trimCanvas(tileCanvas);
+
+      const dataUrl = finalCanvas.toDataURL(mimeType, 0.95);
+      zip.file('tile_' + String(i+1).padStart(3,'0') + ext, dataUrl.split(',')[1], {base64: true});
+    });
+  } else {
+    // Rect extraction
+    state.boxes.forEach((box, i) => {
+      let sx = Math.round(box.x), sy = Math.round(box.y);
+      let sw = Math.round(box.w), sh = Math.round(box.h);
+      sx = Math.max(0, sx); sy = Math.max(0, sy);
+      sw = Math.min(img.width - sx, sw); sh = Math.min(img.height - sy, sh);
+
+      const tileCanvas = document.createElement('canvas');
+      tileCanvas.width = sw; tileCanvas.height = sh;
+      tileCanvas.getContext('2d').drawImage(srcCanvas, sx, sy, sw, sh, 0, 0, sw, sh);
+
+      let finalCanvas = tileCanvas;
+      if (trim) finalCanvas = trimCanvas(tileCanvas);
+
+      const dataUrl = finalCanvas.toDataURL(mimeType, 0.95);
+      zip.file('tile_' + String(i+1).padStart(3,'0') + ext, dataUrl.split(',')[1], {base64: true});
+    });
+  }
+
+  const blob = await zip.generateAsync({type: 'blob'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'tiles_split.zip';
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('已下载 ' + items.length + ' 张素材');
+}
+
+function trimCanvas(canvas) {
+  const ctx = canvas.getContext('2d');
+  const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+  let top = canvas.height, left = canvas.width, right = 0, bottom = 0;
+  for (let y = 0; y < canvas.height; y++) {
+    for (let x = 0; x < canvas.width; x++) {
+      if (data[(y * canvas.width + x) * 4 + 3] > 0) {
+        if (y < top) top = y; if (y > bottom) bottom = y;
+        if (x < left) left = x; if (x > right) right = x;
+      }
+    }
+  }
+  if (top >= bottom || left >= right) return canvas;
+  const w = right - left + 1, h = bottom - top + 1;
+  const trimmed = document.createElement('canvas');
+  trimmed.width = w; trimmed.height = h;
+  trimmed.getContext('2d').drawImage(canvas, left, top, w, h, 0, 0, w, h);
+  return trimmed;
+}
+
+// ========== MERGE MODE ==========
+document.getElementById('mergeFiles').addEventListener('change', e => { handleMergeFiles(e.target.files); });
+const mergeUploadZone = document.getElementById('mergeUpload');
+mergeUploadZone.addEventListener('dragover', e => { e.preventDefault(); mergeUploadZone.classList.add('dragover'); });
+mergeUploadZone.addEventListener('dragleave', () => mergeUploadZone.classList.remove('dragover'));
+mergeUploadZone.addEventListener('drop', e => {
+  e.preventDefault(); mergeUploadZone.classList.remove('dragover');
+  handleMergeFiles(e.dataTransfer.files);
+});
+
+function handleMergeFiles(files) {
+  const promises = Array.from(files).map(file => new Promise(resolve => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => resolve({name: file.name, img, dataUrl: e.target.result});
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  }));
+  Promise.all(promises).then(results => {
+    state.mergeImages.push(...results);
+    updateMergePreview();
+    showToast('已添加 ' + results.length + ' 张图片');
+  });
+}
+
+function updateMergePreview() {
+  const imgs = state.mergeImages;
+  if (imgs.length === 0) {
+    document.getElementById('mergeEmpty').style.display = 'block';
+    document.getElementById('mergePreviewContainer').style.display = 'none';
+    document.getElementById('mergeBtn').disabled = true;
+    document.getElementById('mergeCount').textContent = '';
+    return;
+  }
+  document.getElementById('mergeEmpty').style.display = 'none';
+  document.getElementById('mergePreviewContainer').style.display = 'block';
+  document.getElementById('mergeBtn').disabled = false;
+  document.getElementById('mergeCount').textContent = '共 ' + imgs.length + ' 张素材';
+
+  const cols = parseInt(document.getElementById('mergeCols').value);
+  const grid = document.getElementById('mergeGrid');
+  grid.style.gridTemplateColumns = `repeat(${Math.min(cols, imgs.length)}, 80px)`;
+  grid.innerHTML = '';
+  imgs.forEach((item, i) => {
+    const div = document.createElement('div');
+    div.className = 'merge-item'; div.style.height = '80px';
+    div.innerHTML = `<span class="idx">${i+1}</span><img src="${item.dataUrl}" title="${item.name}"><button class="del-btn" onclick="removeMergeItem(${i})">×</button>`;
+    grid.appendChild(div);
+  });
+  document.getElementById('mergeBgColorGroup').style.display = document.getElementById('mergeBgTransparent').checked ? 'none' : 'block';
+}
+
+function removeMergeItem(i) { state.mergeImages.splice(i, 1); updateMergePreview(); }
+function clearMergeItems() { state.mergeImages = []; updateMergePreview(); }
+function sortMergeItems(by) {
+  if (by === 'name') state.mergeImages.sort((a,b) => a.name.localeCompare(b.name));
+  else state.mergeImages.sort((a,b) => (b.img.width*b.img.height) - (a.img.width*a.img.height));
+  updateMergePreview();
+  showToast('已按' + (by==='name'?'名称':'尺寸') + '排序');
+}
+
+async function mergeAndDownload() {
+  if (state.mergeImages.length === 0) return;
+  const cols = parseInt(document.getElementById('mergeCols').value);
+  const padX = parseInt(document.getElementById('mergePadX').value);
+  const padY = parseInt(document.getElementById('mergePadY').value);
+  const padding = parseInt(document.getElementById('mergePadding').value);
+  const uniform = document.getElementById('mergeUniform').checked;
+  const transparent = document.getElementById('mergeBgTransparent').checked;
+  const bgColor = document.getElementById('mergeBgColor').value;
+  const format = document.getElementById('mergeFormat').value;
+  const mimeType = format === 'webp' ? 'image/webp' : 'image/png';
+  const ext = format === 'webp' ? '.webp' : '.png';
+  const imgs = state.mergeImages;
+
+  let cellW = 0, cellH = 0;
+  if (uniform) imgs.forEach(item => { cellW = Math.max(cellW, item.img.width); cellH = Math.max(cellH, item.img.height); });
+
+  let maxRowW = 0, totalH = 0, rowH = 0, rowW = 0, rowCount = 0;
+  imgs.forEach((item, i) => {
+    const iw = uniform ? cellW : item.img.width, ih = uniform ? cellH : item.img.height;
+    rowW += iw; rowH = Math.max(rowH, ih); rowCount++;
+    if (rowCount === cols || i === imgs.length - 1) {
+      maxRowW = Math.max(maxRowW, rowW + (rowCount - 1) * padX);
+      totalH += rowH;
+      if (i < imgs.length - 1) totalH += padY;
+      rowW = 0; rowH = 0; rowCount = 0;
+    }
+  });
+  const canvasW = maxRowW + padding * 2, canvasH = totalH + padding * 2;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvasW; canvas.height = canvasH;
+  const ctx = canvas.getContext('2d');
+  if (!transparent) { ctx.fillStyle = bgColor; ctx.fillRect(0, 0, canvasW, canvasH); }
+
+  let cx = padding, cy = padding, curRowH = 0, colIdx = 0;
+  imgs.forEach((item, i) => {
+    const iw = uniform ? cellW : item.img.width, ih = uniform ? cellH : item.img.height;
+    const ox = uniform ? cx + (cellW - item.img.width) / 2 : cx;
+    const oy = uniform ? cy + (cellH - item.img.height) / 2 : cy;
+    ctx.drawImage(item.img, ox, oy);
+    curRowH = Math.max(curRowH, ih); cx += iw + padX; colIdx++;
+    if (colIdx === cols) { cy += curRowH + padY; cx = padding; curRowH = 0; colIdx = 0; }
+  });
+
+  const resultCanvas = document.getElementById('mergeResultCanvas');
+  resultCanvas.width = canvasW; resultCanvas.height = canvasH;
+  resultCanvas.getContext('2d').drawImage(canvas, 0, 0);
+  document.getElementById('mergeResultContainer').style.display = 'block';
+
+  const dataUrl = canvas.toDataURL(mimeType, 0.95);
+  const a = document.createElement('a');
+  a.href = dataUrl; a.download = 'tilemap_merged' + ext; a.click();
+  showToast('合并完成! (' + canvasW + '×' + canvasH + ')');
+}
+
+document.getElementById('mergeBgTransparent').addEventListener('change', e => {
+  document.getElementById('mergeBgColorGroup').style.display = e.target.checked ? 'none' : 'block';
+});
+
+// ========== WINDOW RESIZE ==========
+window.addEventListener('resize', () => {
+  if (state.originalImage && state.mode === 'split') {
+    fitImageToView(state.originalImage);
+    drawMain();
+    drawOverlay();
+  }
+});
+
+// ========== PASTE SUPPORT ==========
+document.addEventListener('paste', e => {
+  const items = e.clipboardData.items;
+  for (const item of items) {
+    if (item.type.startsWith('image/')) {
+      const file = item.getAsFile();
+      if (state.mode === 'split') loadSplitImage(file);
+      else handleMergeFiles([file]);
+      break;
+    }
+  }
+});
+
+console.log('🎮 游戏素材拆分与合并工具 v2 已加载');
+</script>
+</body>
+</html>
