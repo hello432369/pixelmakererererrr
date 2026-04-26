@@ -15,7 +15,10 @@ pixel maker
 
 开发者:兔师兄369
 
+感谢大家的支持哈
 
 ![图1](https://github.com/hello432369/pixelmakererererrr/blob/main/ScreenShot_2026-04-26_144623_574.png?raw=true)
 
 ![图2](https://github.com/hello432369/pixelmakererererrr/blob/main/ScreenShot_2026-04-26_144641_196.png?raw=true)
+
+
